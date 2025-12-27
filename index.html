@@ -38,10 +38,13 @@
 
 <script>
 const CONFIG = {
-  monthsToShow: 2,
-  cardsPerMonth: 3,
+  // If events.json was built by HTML scraping, dates may be approximate.
+  // So we can display a single "Upcoming Events" grid reliably.
+  showSingleSection: true,
+  totalCards: 6,
   timezone: "America/New_York"
 };
+
 
 const FALLBACK_IMAGE =
   "data:image/svg+xml;charset=utf-8," +
@@ -78,63 +81,58 @@ function isNextUp(start){
 }
 
 function render(events, generatedAt){
+  // Sort by start date (best effort)
   events.sort((a,b)=> new Date(a.start) - new Date(b.start));
-  const grouped = new Map();
-  for (const e of events){
-    const sd = new Date(e.start);
-    const key = fmtMonthKey(sd);
-    if (!grouped.has(key)) grouped.set(key, []);
-    grouped.get(key).push(e);
-  }
 
-  const keys = Array.from(grouped.keys()).slice(0, CONFIG.monthsToShow);
   const root = document.getElementById("root");
   root.innerHTML = "";
 
-  if (!keys.length){
+  if (!events.length){
     root.innerHTML = `<div class="status">No upcoming events found.</div>`;
     return;
   }
 
-  for (const key of keys){
-    const h = document.createElement("div");
-    h.className = "month";
-    h.textContent = key;
-    root.appendChild(h);
+  // Single reliable section (recommended for scrape-based feed)
+  const h = document.createElement("div");
+  h.className = "month";
+  h.textContent = "Upcoming Events";
+  root.appendChild(h);
 
-    const grid = document.createElement("div");
-    grid.className = "grid";
+  const grid = document.createElement("div");
+  grid.className = "grid";
 
-    const items = grouped.get(key).slice(0, CONFIG.cardsPerMonth);
-    for (const ev of items){
-      const start = new Date(ev.start);
-      const end = new Date(ev.end || ev.start);
-      const imgSrc = ev.image || FALLBACK_IMAGE;
-      const badge = isNextUp(start) ? `<div class="badge">Next Up</div>` : "";
+  const items = events.slice(0, CONFIG.totalCards || 6);
 
-      const card = document.createElement("div");
-      card.className = "card";
-      card.innerHTML = `
-        ${badge}
-        <img src="${safe(imgSrc)}" alt="">
-        <div class="overlay"></div>
-        <div class="content">
-          <h2>${safe(ev.title)}</h2>
-          <div class="meta">${safe(fmtDateTime(start,end))}${ev.venue ? " · " + safe(ev.venue) : ""}</div>
-        </div>
-      `;
-      const img = card.querySelector("img");
-      img.addEventListener("error", ()=>{ img.src = FALLBACK_IMAGE; }, {once:true});
-      grid.appendChild(card);
-    }
-    root.appendChild(grid);
+  for (const ev of items){
+    const start = new Date(ev.start);
+    const end = new Date(ev.end || ev.start);
+    const imgSrc = ev.image || FALLBACK_IMAGE;
+    const badge = isNextUp(start) ? `<div class="badge">Next Up</div>` : "";
+
+    const card = document.createElement("div");
+    card.className = "card";
+    card.innerHTML = `
+      ${badge}
+      <img src="${safe(imgSrc)}" alt="">
+      <div class="overlay"></div>
+      <div class="content">
+        <h2>${safe(ev.title)}</h2>
+        <div class="meta">${safe(fmtDateTime(start,end))}${ev.venue ? " · " + safe(ev.venue) : ""}</div>
+      </div>
+    `;
+    const img = card.querySelector("img");
+    img.addEventListener("error", ()=>{ img.src = FALLBACK_IMAGE; }, {once:true});
+    grid.appendChild(card);
   }
+
+  root.appendChild(grid);
 
   const foot = document.createElement("div");
   foot.className = "tiny";
   foot.innerHTML = `Updated: ${safe(new Date(generatedAt || Date.now()).toLocaleString("en-US",{timeZone:CONFIG.timezone}))}`;
   root.appendChild(foot);
 }
+
 
 async function main(){
   try{
