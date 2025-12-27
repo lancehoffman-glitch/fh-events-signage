@@ -1,0 +1,60 @@
+name: Update events.json
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "*/30 * * * *"   # every 30 minutes
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Fetch events (The Events Calendar REST)
+        run: |
+          set -e
+          URL="https://friendshipheightsmd.gov/wp-json/tribe/events/v1/events?per_page=50&page=1&orderby=start_date&order=asc"
+          curl -sS "$URL" > raw.json
+
+      - name: Build events.json
+        run: |
+          node - <<'NODE'
+          const fs = require("fs");
+
+          const raw = JSON.parse(fs.readFileSync("raw.json","utf8"));
+          const events = (raw.events || []).map(e => {
+            const img =
+              (e.image && e.image.url) ||
+              (e.image && e.image.sizes && e.image.sizes.large && e.image.sizes.large.url) ||
+              (e.featured_image && e.featured_image.url) ||
+              e.featured_image ||
+              "";
+            const venue = (e.venue && (e.venue.venue || e.venue.name)) || "";
+            return {
+              title: (e.title || "").replace(/<[^>]*>/g,"").trim(),
+              start: e.start_date || "",
+              end: e.end_date || e.start_date || "",
+              venue: venue,
+              image: img
+            };
+          }).filter(x => x.start);
+
+          const out = {
+            generated_at: new Date().toISOString(),
+            events
+          };
+
+          fs.writeFileSync("events.json", JSON.stringify(out, null, 2));
+          NODE
+
+      - name: Commit and push if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add events.json
+          git diff --cached --quiet || (git commit -m "Update events.json" && git push)
